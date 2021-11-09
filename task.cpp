@@ -5,7 +5,6 @@
 #include <random>
 #include <omp.h>
 
-
 #define N1 4096
 #define M1 4096
 //#define DEBUG
@@ -15,7 +14,6 @@ using type = int;
 #else 
 using type = double;
 #endif
-
 
 void print(type* matr, const size_t N, const size_t M) {
 	for (size_t i = 0; i < N; ++i) {
@@ -37,10 +35,10 @@ type* matrix_multiplication_base(type* matr1, size_t n1, size_t m1, type* matr2,
 	memset(res_matr, 0, n1 * m2 * sizeof(type));
 
 	auto start = std::chrono::high_resolution_clock::now();
-	#pragma omp parallel for
+#pragma omp parallel for
 	for (int i = 0; i < n1; ++i)
 		for (int k = 0; k < m1; ++k)
-	#pragma omp simd
+#pragma omp simd
 			for (int j = 0; j < m2; ++j)
 				res_matr[i * m2 + j] += matr1[i * m1 + k] * matr2[k * m2 + j];
 
@@ -63,7 +61,7 @@ type* matrix_multiplication_block\
 
 	auto start = std::chrono::high_resolution_clock::now();
 
-	#pragma omp parallel for
+#pragma omp parallel for
 	for (int ib = 0; ib < n1; ib += block_sz_n) {
 		int up_i = ib + block_sz_n < n1 ? ib + block_sz_n : n1;
 		for (int kb = 0; kb < m1; kb += block_sz_m) {
@@ -72,7 +70,7 @@ type* matrix_multiplication_block\
 				int up_j = jb + block_sz_n < m2 ? jb + block_sz_n : m2;
 				for (int i = ib; i < up_i; ++i) {
 					for (int k = kb; k < up_k; ++k) {
-						#pragma omp simd
+#pragma omp simd
 						for (int j = jb; j < up_j; ++j)
 							res_matr[i * m2 + j] += matr1[i * m1 + k] * matr2[k * m2 + j];
 					}
@@ -97,7 +95,7 @@ type* matrix_multiplication_sqr_block\
 	memset(res_matr, 0, n1 * m2 * sizeof(type));
 
 	auto start = std::chrono::high_resolution_clock::now();
-	#pragma omp parallel for
+#pragma omp parallel for
 	for (int jb = 0; jb < m2; jb += block) {
 		for (int kb = 0; kb < m1; kb += block) {
 			for (int tn = 0; tn < block; ++tn) {
@@ -107,11 +105,9 @@ type* matrix_multiplication_sqr_block\
 			for (int ib = 0; ib < n1; ib += block)
 				for (int i = 0; i < block; ++i)
 					for (int j = 0; j < block; ++j) {
-						#pragma omp simd 
+#pragma omp simd 
 						for (int k = 0; k < block; ++k) {
-							res_matr[(ib + i) * m2 + jb + j] += \
-								matr1[(ib + i) * m1 + kb + k] * \
-								matr2[(kb + j) * m2 + jb + k];
+							res_matr[(ib + i) * m2 + jb + j] += matr1[(ib + i) * m1 + kb + k] * matr2[(kb + j) * m2 + jb + k];
 						}
 
 					}
@@ -150,17 +146,17 @@ type* generate_int_matrix(const size_t N, const size_t M) {
 	return matrix;
 }
 
-void destructor(type* matrix) {
-	if (matrix == nullptr) return;
-	delete[]matrix;
-	matrix = nullptr;
+void destructor(type* matr) {
+	if (matr == nullptr) return;
+	delete[](matr);
+	matr = nullptr;
 }
 
 void launch(int k) {
 	srand(time(NULL));
 	type* matr1 = generate_double_matrix(N1, M1);
 	type* matr2 = generate_double_matrix(M1, M1);
-	type* ans = new type[N1 * M1];
+	type* ans;
 
 	switch (k) {
 	case 0: {
@@ -186,21 +182,28 @@ void local_launch() {
 	type* matr1 = generate_int_matrix(N1, M1);
 	type* matr2 = generate_int_matrix(M1, M1);
 
-	type* ans = new type[N1 * M1];
-	ans = matrix_multiplication_base(matr1, N1, M1, matr2, M1, M1);
-	type* ans1 = new type[N1 * M1];
-	ans1 = matrix_multiplication_block(matr1, N1, M1, matr2, M1, M1, 128, 256);
-	type* ans2 = new type[N1 * M1];
-	ans2 = matrix_multiplication_sqr_block(matr1, N1, M1, matr2, M1, M1, 128);
+	type* ans = matrix_multiplication_base(matr1, N1, M1, matr2, M1, M1);
+	type* ans1 = matrix_multiplication_block(matr1, N1, M1, matr2, M1, M1, 128, 256);
+	type* ans2 = matrix_multiplication_sqr_block(matr1, N1, M1, matr2, M1, M1, 128);
 
 	for (size_t i = 0; i < N1; ++i)
 		for (size_t j = 0; j < M1; ++j) {
 			if (ans[i * M1 + j] != ans1[i * M1 + j]) {
 				std::cout << i << " " << j << " FAILED: SQR BLOCK\n";
+				destructor(matr1);
+				destructor(matr2);
+				destructor(ans);
+				destructor(ans1);
+				destructor(ans2);
 				return;
 			}
 			if (ans[i * M1 + j] != ans2[i * M1 + j]) {
 				std::cout << i << " " << j << " FAILED: TRANSPOSE SQR BLOCK\n";
+				destructor(matr1);
+				destructor(matr2);
+				destructor(ans);
+				destructor(ans1);
+				destructor(ans2);
 				return;
 			}
 
@@ -214,13 +217,14 @@ void local_launch() {
 }
 
 
-int main()
-{
+int main() {
+
 #ifdef DEBUG
 	local_launch();
 #else
 	for (size_t i = 0; i < 3; ++i)
 		launch(i);
 #endif
+
 	return 0;
 }
